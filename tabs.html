@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; background: #1e1e1e; overflow: hidden; font-family: sans-serif; }
+        #tab-bar { display: flex; background: #252526; height: 32px; align-items: center; padding-left: 5px; border-bottom: 1px solid #181818; }
+        .tab { display: flex; align-items: center; background: #2d2d2d; color: #969696; padding: 0 12px; height: 100%; font-size: 12px; cursor: pointer; border-right: 1px solid #181818; user-select: none; }
+        .tab.active { background: #1e1e1e; color: #fff; border-top: 2px solid #007acc; }
+        .tab .close { margin-left: 8px; font-size: 14px; opacity: 0.6; }
+        .tab .close:hover { opacity: 1; color: #ff4d4d; }
+        #new-tab { background: transparent; border: none; color: #fff; font-size: 18px; cursor: pointer; padding: 0 10px; height: 100%; }
+        #new-tab:hover { background: #333; }
+        #editor-container { width: 100%; height: calc(100% - 32px); position: relative; }
+        .editor-pane { width: 100%; height: 100%; position: absolute; display: none; }
+        .editor-pane.active { display: block; }
+    </style>
+</head>
+<body>
+    <div id="tab-bar">
+        <div id="tabs-list"></div>
+        <button id="new-tab" onclick="createNewTab()">+</button>
+    </div>
+    <div id="editor-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/loader.min.js"></script>
+    <script>
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min' }});
+        
+        let tabs = [];
+        let activeTabId = null;
+        let tabCounter = 1;
+
+        require(['vs/editor/editor.main'], function() {
+            // Создаем первую вкладку сразу с твоим текстом
+            createNewTab('New Tab 1', 'print("Hello from Spectre")');
+        });
+
+        function createNewTab(name = null, content = '-- Write your script here\n') {
+            const id = 'tab_' + Date.now();
+            const tabName = name || `New Tab ${tabCounter++}`;
+
+            // Создаем элемент вкладки сверху
+            const tabEl = document.createElement('div');
+            tabEl.className = 'tab';
+            tabEl.id = 'btn_' + id;
+            tabEl.innerHTML = `<span>${tabName}</span><span class="close" onclick="closeTab(event, '${id}')">&times;</span>`;
+            tabEl.onclick = () => switchTab(id);
+            document.getElementById('tabs-list').appendChild(tabEl);
+
+            // Создаем контейнер для редактора
+            const paneEl = document.createElement('div');
+            paneEl.className = 'editor-pane';
+            paneEl.id = 'pane_' + id;
+            document.getElementById('editor-container').appendChild(paneEl);
+
+            // Инициализируем Monaco Editor внутри панели
+            const editor = monaco.editor.create(paneEl, {
+                value: content,
+                language: 'lua',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                fontSize: 14
+            });
+
+            tabs.push({ id, editor, tabEl, paneEl });
+            switchTab(id);
+        }
+
+        function switchTab(id) {
+            tabs.forEach(t => {
+                if (t.id === id) {
+                    t.tabEl.classList.add('active');
+                    t.paneEl.classList.add('active');
+                    t.editor.layout();
+                    activeTabId = t.id;
+                } else {
+                    t.tabEl.classList.remove('active');
+                    t.paneEl.classList.remove('active');
+                }
+            });
+        }
+
+        function closeTab(event, id) {
+            event.stopPropagation();
+            if (tabs.length <= 1) return; // Не даем закрыть последнюю вкладку
+
+            const index = tabs.findIndex(t => t.id === id);
+            if (index !== -1) {
+                tabs[index].tabEl.remove();
+                tabs[index].paneEl.remove();
+                tabs[index].editor.dispose();
+                tabs.splice(index, 1);
+
+                if (activeTabId === id) {
+                    switchTab(tabs[tabs.length - 1].id);
+                }
+            }
+        }
+
+        // Функция для C# чтобы забрать текст из активного редактора
+        function getActiveEditorText() {
+            const current = tabs.find(t => t.id === activeTabId);
+            return current ? current.editor.getValue() : '';
+        }
+    </script>
+</body>
+</html>
