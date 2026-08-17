@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <style>
         body, html { margin: 0; padding: 0; height: 100%; background: #1e1e1e; overflow: hidden; font-family: sans-serif; }
         #tab-bar { display: flex; background: #252526; height: 32px; align-items: center; padding-left: 5px; border-bottom: 1px solid #181818; overflow-x: auto; }
@@ -24,20 +25,28 @@
     </div>
     <div id="editor-container"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/loader.min.js"></script>
+    <!-- Используем Microsoft Ajax CDN для надежной загрузки в WebView2 -->
+    <script src="https://ajax.aspnetcdn.com/ajax/requirejs/2.3.6/require.min.js"></script>
     <script>
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min' }});
-        
         let tabs = [];
         let activeTabId = null;
         let tabCounter = 1;
+        let monacoLoaded = false;
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs' }});
 
         require(['vs/editor/editor.main'], function() {
+            monacoLoaded = true;
             loadSavedTabs();
         });
 
-        function createNewTab(name = null, content = '-- Write your script here\n') {
-            const id = 'tab_' + Date.now() + Math.random().toString(36.substring(2, 5));
+        function createNewTab(name = null, content = '-- Write your script here\nprint("Hello from Spectre")') {
+            if (!monacoLoaded) {
+                setTimeout(() => createNewTab(name, content), 200);
+                return;
+            }
+
+            const id = 'tab_' + Date.now() + Math.random().toString(36).substring(2, 5);
             const tabName = name || `New Tab ${tabCounter++}`;
 
             const tabEl = document.createElement('div');
@@ -153,7 +162,6 @@
                     }
                 }
             } catch (err) {}
-            // Дефолтная вкладка, если сохранений нет
             createNewTab('New Tab 1', 'print("Hello from Spectre")');
         }
 
