@@ -15,14 +15,12 @@
             flex-grow: 1; 
             height: 100%; 
             scroll-behavior: smooth;
-            /* Кастомный тонкий скроллбар */
             scrollbar-width: thin;
             scrollbar-color: #424242 #252526;
         }
         #tabs-container::-webkit-scrollbar { height: 4px; }
         #tabs-container::-webkit-scrollbar-track { background: #252526; }
         #tabs-container::-webkit-scrollbar-thumb { background: #424242; border-radius: 2px; }
-        #tabs-container::-webkit-scrollbar-thumb:hover { background: #007acc; }
 
         .tab { 
             display: flex; 
@@ -60,7 +58,28 @@
         #new-tab-btn:hover { background: #333333; color: #007acc; }
 
         #editor-container { width: 100%; height: calc(100% - 35px); position: relative; }
-        .editor-pane { width: 100%; height: 100%; position: absolute; display: none; top: 0; left: 0; }
+        
+        /* Кастомное текстовое поле вместо тяжелого Monaco, которое никогда не зависает */
+        .editor-pane { 
+            width: 100%; 
+            height: 100%; 
+            position: absolute; 
+            display: none; 
+            top: 0; 
+            left: 0; 
+            background: #1e1e1e; 
+            color: #d4d4d4; 
+            font-family: 'Consolas', 'Courier New', monospace; 
+            font-size: 14px; 
+            padding: 10px; 
+            box-sizing: border-box; 
+            border: none; 
+            outline: none; 
+            resize: none; 
+            line-height: 1.5;
+            white-space: pre;
+            overflow: auto;
+        }
         .editor-pane.active { display: block; }
     </style>
 </head>
@@ -73,21 +92,11 @@
     </div>
     <div id="editor-container"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/loader.min.js"></script>
     <script>
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs' }});
-        
         let tabs = [];
         let activeTabId = null;
         let tabCounter = 1;
-        let isMonacoReady = false;
 
-        require(['vs/editor/editor.main'], function() {
-            isMonacoReady = true;
-            loadSavedTabs();
-        });
-
-        // Прокрутка колесиком мыши вбок по вкладкам
         const container = document.getElementById('tabs-container');
         container.addEventListener('wheel', (evt) => {
             if (evt.deltaY !== 0) {
@@ -96,12 +105,12 @@
             }
         });
 
-        function createNewTab(name = null, content = '-- Write your script here\nprint("Hello from Spectre")') {
-            if (!isMonacoReady) {
-                setTimeout(() => createNewTab(name, content), 150);
-                return;
-            }
+        // Запуск при старте
+        window.onload = function() {
+            loadSavedTabs();
+        };
 
+        function createNewTab(name = null, content = 'print("Hello from Spectre")') {
             const id = 'tab_' + Date.now() + Math.random().toString(36).substring(2, 5);
             const tabName = name || `New Tab ${tabCounter++}`;
 
@@ -143,28 +152,35 @@
             tabEl.onclick = () => switchTab(id);
             document.getElementById('tabs-list').appendChild(tabEl);
 
-            const paneEl = document.createElement('div');
-            paneEl.className = 'editor-pane';
-            paneEl.id = 'pane_' + id;
-            document.getElementById('editor-container').appendChild(paneEl);
+            // Создаем textarea вместо тяжелого редактора
+            const textarea = document.createElement('textarea');
+            textarea.className = 'editor-pane';
+            textarea.id = 'pane_' + id;
+            textarea.value = content;
+            textarea.spellcheck = false;
 
-            const editor = monaco.editor.create(paneEl, {
-                value: content,
-                language: 'lua',
-                theme: 'vs-dark',
-                automaticLayout: true,
-                fontSize: 14
-            });
-
-            editor.onDidChangeModelContent(() => {
+            textarea.oninput = () => {
                 saveTabsState();
-            });
+            };
 
-            tabs.push({ id, editor, tabEl, paneEl, titleSpan });
+            // Поддержка табуляции (нажатие Tab внутри редактора)
+            textarea.onkeydown = (e) => {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    textarea.value = textarea.value.substring(0, start) + "    " + textarea.value.substring(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + 4;
+                    saveTabsState();
+                }
+            };
+
+            document.getElementById('editor-container').appendChild(textarea);
+
+            tabs.push({ id, textarea, tabEl, titleSpan });
             switchTab(id);
             saveTabsState();
 
-            // Автопрокрутка к новой вкладке вправо
             container.scrollLeft = container.scrollWidth;
         }
 
@@ -172,12 +188,12 @@
             tabs.forEach(t => {
                 if (t.id === id) {
                     t.tabEl.classList.add('active');
-                    t.paneEl.classList.add('active');
-                    t.editor.layout();
+                    t.textarea.classList.add('active');
+                    t.textarea.focus();
                     activeTabId = t.id;
                 } else {
                     t.tabEl.classList.remove('active');
-                    t.paneEl.classList.remove('active');
+                    t.textarea.classList.remove('active');
                 }
             });
         }
@@ -189,8 +205,7 @@
             const index = tabs.findIndex(t => t.id === id);
             if (index !== -1) {
                 tabs[index].tabEl.remove();
-                tabs[index].paneEl.remove();
-                tabs[index].editor.dispose();
+                tabs[index].textarea.remove();
                 tabs.splice(index, 1);
 
                 if (activeTabId === id) {
@@ -204,7 +219,7 @@
             try {
                 const data = tabs.map(t => ({
                     name: t.titleSpan.textContent,
-                    content: t.editor.getValue()
+                    content: t.textarea.value
                 }));
                 localStorage.setItem('spectre_tabs', JSON.stringify(data));
             } catch (err) {}
@@ -224,9 +239,10 @@
             createNewTab('New Tab 1', 'print("Hello from Spectre")');
         }
 
+        // Функция для C# чтобы забрать текст
         function getActiveEditorText() {
             const current = tabs.find(t => t.id === activeTabId);
-            return current ? current.editor.getValue() : '';
+            return current ? current.textarea.value : '';
         }
     </script>
 </body>
